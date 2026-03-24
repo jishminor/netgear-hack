@@ -361,12 +361,17 @@ class NetgearClient:
                 for device in connected
             ]
 
-            response = self._send_profile_request(
-                self.profile["block_action" if blocked else "unblock_action"],
-                self._acl_payload_context(page, updated_devices, action_name=action_name),
-                absolute_url=page.action_url,
-                pre_rendered=True,
-            )
+            try:
+                response = self._send_profile_request(
+                    self.profile["block_action" if blocked else "unblock_action"],
+                    self._acl_payload_context(page, updated_devices, action_name=action_name),
+                    absolute_url=page.action_url,
+                    pre_rendered=True,
+                )
+            except RequestError as exc:
+                if self._recover_after_timeout(target_mac, blocked=blocked, error=exc):
+                    return BlockResult(status="blocked" if blocked else "unblocked", mac=target_mac)
+                raise
             self._validate_action_response(response, self.profile["block_action" if blocked else "unblock_action"], "router rejected ACL update")
         else:
             delete_payload = {
@@ -379,12 +384,17 @@ class NetgearClient:
                 "buttonValue": "Delete",
                 "delete_black": "Delete",
             }
-            response = self._send_profile_request(
-                self.profile["unblock_action"],
-                delete_payload,
-                absolute_url=page.action_url,
-                pre_rendered=True,
-            )
+            try:
+                response = self._send_profile_request(
+                    self.profile["unblock_action"],
+                    delete_payload,
+                    absolute_url=page.action_url,
+                    pre_rendered=True,
+                )
+            except RequestError as exc:
+                if self._recover_after_timeout(target_mac, blocked=blocked, error=exc):
+                    return BlockResult(status="unblocked", mac=target_mac)
+                raise
             self._validate_action_response(response, self.profile["unblock_action"], "router rejected ACL update")
 
         if self.profile.get("confirm_after_block", True):
@@ -394,6 +404,12 @@ class NetgearClient:
                 raise ProtocolError("router accepted request but MAC state did not update")
 
         return BlockResult(status="blocked" if blocked else "unblocked", mac=target_mac)
+
+    def _recover_after_timeout(self, target_mac: str, *, blocked: bool, error: RequestError) -> bool:
+        if "timed out" not in str(error).lower():
+            return False
+        confirmed = self._fetch_access_control_page()
+        return (target_mac in confirmed.blocked_macs) == blocked
 
     def _acl_payload_context(
         self,

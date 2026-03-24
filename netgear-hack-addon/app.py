@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -59,9 +60,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "missing or invalid bearer token"})
                 return
 
+        started = time.monotonic()
         try:
             body = self._read_json()
             mac = body["mac"]
+            print(f"request start path={self.path} mac={mac} timeout={options.get('timeout', 30)}")
             config = build_config(options)
             profile = build_profile(options)
             client = NetgearClient(config, profile)
@@ -73,12 +76,16 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid JSON body"})
             return
         except AuthenticationError as exc:
+            print(f"request auth_error path={self.path} error={exc}")
             self._send_json(HTTPStatus.UNAUTHORIZED, {"error": str(exc)})
             return
         except (ConfigError, RequestError, ProtocolError) as exc:
+            print(f"request failure path={self.path} error={exc}")
             self._send_json(HTTPStatus.BAD_GATEWAY, {"error": str(exc)})
             return
 
+        elapsed = time.monotonic() - started
+        print(f"request success path={self.path} mac={result.mac} status={result.status} elapsed={elapsed:.2f}s")
         self._send_json(HTTPStatus.OK, {"status": result.status, "mac": result.mac})
 
     def log_message(self, format: str, *args: object) -> None:
@@ -91,11 +98,14 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
         encoded = json.dumps(payload).encode("utf-8")
-        self.send_response(status.value)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(encoded)))
-        self.end_headers()
-        self.wfile.write(encoded)
+        try:
+            self.send_response(status.value)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+        except BrokenPipeError:
+            print(f"client disconnected before response was written status={status.value} payload={payload}")
 
 
 def main() -> None:

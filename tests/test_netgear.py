@@ -10,6 +10,7 @@ from netgear_client import (
     BlockResult,
     NetgearClient,
     ProtocolError,
+    RequestError,
     RouterConfig,
     SimpleResponse,
     _parse_access_control_html,
@@ -34,7 +35,10 @@ class FakeSession:
         )
         if not self.responses:
             raise AssertionError("unexpected extra request")
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 def make_response(status=200, text="", url="http://router.local/ok"):
@@ -391,6 +395,22 @@ class HtmlAclTests(unittest.TestCase):
         post_body = session.calls[3]["data"].decode("utf-8")
         self.assertIn("delete_black=Delete", post_body)
         self.assertIn("delete_black_lists=1%3A0C%3A91%3A60%3A03%3A4F%3A84%3A", post_body)
+
+    def test_timeout_can_still_confirm_block_success(self):
+        session = FakeSession(
+            [
+                make_response(status=401, text="unauthorized", url="http://192.168.1.1/start.htm"),
+                make_response(text="NETGEAR Router", url="http://192.168.1.1/start.htm"),
+                self.page_allow,
+                RequestError("router request timed out"),
+                self.page_blocked,
+            ]
+        )
+        client = NetgearClient(self.config, self.profile, session=session)
+
+        result = client.block_mac("0C:91:60:03:4F:84")
+
+        self.assertEqual(result, BlockResult(status="blocked", mac="0C:91:60:03:4F:84"))
 
 
 class CliTests(unittest.TestCase):
