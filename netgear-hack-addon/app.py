@@ -2,21 +2,16 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-ROOT = Path("/opt/netgear-hack")
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 from netgear_client import AuthenticationError, ConfigError, NetgearClient, ProtocolError, RequestError, RouterConfig, load_profile
 
 
 OPTIONS_PATH = Path("/data/options.json")
-PROFILE_PATH = ROOT / "router_profile.example.json"
+PROFILE_PATH = Path("/opt/netgear-hack/router_profile.example.json")
 
 
 def load_options() -> dict[str, Any]:

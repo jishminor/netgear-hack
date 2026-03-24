@@ -5,8 +5,8 @@ WORKDIR /opt/netgear-hack
 
 COPY netgear_client.py netgear_client.py
 COPY router_profile.example.json router_profile.example.json
-COPY netgear-hack-addon/app.py netgear-hack-addon/app.py
-COPY netgear-hack-addon/run.sh /run.sh
+COPY app.py app.py
+COPY run.sh /run.sh
 
 RUN chmod a+x /run.sh
 
