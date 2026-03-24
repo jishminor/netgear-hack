@@ -1,0 +1,33 @@
+name: Netgear Hack
+version: "0.1.0"
+slug: netgear_hack
+description: Block and unblock MAC addresses on a Netgear RAX43v2 access-control list
+url: "https://github.com/jishminor/netgear-hack"
+startup: application
+boot: auto
+init: false
+host_network: true
+arch:
+  - aarch64
+  - amd64
+  - armv7
+  - armhf
+  - i386
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: Netgear Hack API
+options:
+  host: "http://192.168.1.1"
+  username: "admin"
+  password: ""
+  timeout: 30
+  verify_tls: true
+  api_token: ""
+schema:
+  host: str
+  username: str
+  password: password
+  timeout: int(1,120)
+  verify_tls: bool
+  api_token: password?

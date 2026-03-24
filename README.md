@@ -159,6 +159,20 @@ shell_command:
 
 A practical deployment is to keep the script and `router_profile.json` in a location Home Assistant can access, then call it from an automation or script with a `mac` variable.
 
+## Home Assistant add-on
+
+This repo also includes a custom Home Assistant add-on in [netgear-hack-addon](/Users/joshminor/code/netgear-hack/netgear-hack-addon).
+
+To use it:
+
+1. Add this GitHub repo as a custom add-on repository in Home Assistant.
+2. Install the `Netgear Hack` add-on.
+3. Fill in the add-on options with your router host, username, and password.
+4. Start the add-on.
+5. Call its HTTP API from Home Assistant using `rest_command`.
+
+See [DOCS.md](/Users/joshminor/code/netgear-hack/netgear-hack-addon/DOCS.md) for the addon API and `rest_command` examples.
+
 ## Notes
 
 - Firmware behavior varies across Netgear models and versions.
