@@ -10,7 +10,7 @@
     "path": "/start.htm",
     "success": {
       "status_codes": [200],
-      "body_regex": "NETGEAR Router"
+      "body_not_regex": "401 Unauthorized|Access to this resource is denied"
     },
     "auth_failure": {
       "status_codes": [401]
