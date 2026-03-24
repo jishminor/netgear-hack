@@ -19,4 +19,5 @@ package = true
 include = [
   "netgear_block.py",
   "netgear_client.py",
+  "netgear_hack",
 ]

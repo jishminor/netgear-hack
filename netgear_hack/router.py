@@ -152,7 +152,10 @@ def _extract_macs(response: SimpleResponse, parser: Mapping[str, Any]) -> set[st
         matches = re.findall(pattern, response.text, re.IGNORECASE | re.MULTILINE)
         values: list[str] = []
         for match in matches:
-            values.append(match[0] if isinstance(match, tuple) else match)
+            if isinstance(match, tuple):
+                values.append(match[0])
+            else:
+                values.append(match)
         return {normalize_mac(value) for value in values}
     if parser_type == "json_path":
         path = parser.get("path")
@@ -220,13 +223,24 @@ class UrlLibSession:
 
 
 class NetgearClient:
-    def __init__(self, config: RouterConfig, profile: Mapping[str, Any], *, session: UrlLibSession | Any | None = None, verbose: bool = False):
+    def __init__(
+        self,
+        config: RouterConfig,
+        profile: Mapping[str, Any],
+        *,
+        session: UrlLibSession | Any | None = None,
+        verbose: bool = False,
+    ):
         self.config = config
         self.profile = profile
         basic_auth = None
         if self.profile.get("login", {}).get("auth") == "basic":
             basic_auth = (config.username, config.password)
-        self.session = session or UrlLibSession(timeout=config.timeout, verify_tls=config.verify_tls, basic_auth=basic_auth)
+        self.session = session or UrlLibSession(
+            timeout=config.timeout,
+            verify_tls=config.verify_tls,
+            basic_auth=basic_auth,
+        )
         self.verbose = verbose
         self._logged_in = False
 
@@ -271,6 +285,17 @@ class NetgearClient:
     def unblock_mac(self, mac: str) -> BlockResult:
         return self._set_mac_block_state(mac, blocked=False)
 
+    def _payload_context(self, target_mac: str, existing_macs: set[str]) -> dict[str, Any]:
+        ordered = sorted(existing_macs | {target_mac})
+        return {
+            "username": self.config.username,
+            "password": self.config.password,
+            "target_mac": target_mac,
+            "blocked_macs_csv": ",".join(ordered),
+            "blocked_macs_newline": "\n".join(ordered),
+            "blocked_macs_json": json.dumps(ordered),
+        }
+
     def _set_mac_block_state(self, mac: str, *, blocked: bool) -> BlockResult:
         normalized = normalize_mac(mac)
         if not self._logged_in:
@@ -288,8 +313,15 @@ class NetgearClient:
             return BlockResult(status="already_unblocked", mac=normalized)
 
         request_spec = self.profile["block_action" if blocked else "unblock_action"]
-        response = self._send_profile_request(request_spec, {})
+        payload_context = self._payload_context(normalized, blocked_macs if blocked else blocked_macs - {normalized})
+        response = self._send_profile_request(request_spec, payload_context)
         self._validate_action_response(response, request_spec, "router rejected access-control update")
+
+        if self.profile.get("confirm_after_block", True) and "blocked_list" in self.profile:
+            confirmed = self.get_blocked_macs()
+            is_present = normalized in confirmed
+            if is_present != blocked:
+                raise ProtocolError("router accepted request but MAC state did not update")
         return BlockResult(status="blocked" if blocked else "unblocked", mac=normalized)
 
     def _validate_action_response(self, response: SimpleResponse, request_spec: Mapping[str, Any], failure_message: str) -> None:
@@ -328,6 +360,7 @@ class NetgearClient:
                 )
                 for device in connected
             ]
+
             response = self._send_profile_request(
                 self.profile["block_action" if blocked else "unblock_action"],
                 self._acl_payload_context(page, updated_devices, action_name=action_name),
@@ -346,19 +379,34 @@ class NetgearClient:
                 "buttonValue": "Delete",
                 "delete_black": "Delete",
             }
-            response = self._send_profile_request(self.profile["unblock_action"], delete_payload, absolute_url=page.action_url, pre_rendered=True)
+            response = self._send_profile_request(
+                self.profile["unblock_action"],
+                delete_payload,
+                absolute_url=page.action_url,
+                pre_rendered=True,
+            )
             self._validate_action_response(response, self.profile["unblock_action"], "router rejected ACL update")
 
-        confirmed = self._fetch_access_control_page()
-        is_blocked = target_mac in confirmed.blocked_macs
-        if is_blocked != blocked:
-            raise ProtocolError("router accepted request but MAC state did not update")
+        if self.profile.get("confirm_after_block", True):
+            confirmed = self._fetch_access_control_page()
+            is_blocked = target_mac in confirmed.blocked_macs
+            if is_blocked != blocked:
+                raise ProtocolError("router accepted request but MAC state did not update")
+
         return BlockResult(status="blocked" if blocked else "unblocked", mac=target_mac)
 
-    def _acl_payload_context(self, page: AccessControlPage, devices: list[AccessControlDevice], *, action_name: str) -> dict[str, Any]:
+    def _acl_payload_context(
+        self,
+        page: AccessControlPage,
+        devices: list[AccessControlDevice],
+        *,
+        action_name: str,
+    ) -> dict[str, Any]:
         access_all = "allow_all" if page.hidden_fields.get("access_all_setting", "1") == "1" else "block_all"
         rule_status_org = [device.status for device in devices]
-        rule_settings = f"{len(devices)}:" + "".join(f"{device.mac}:{1 if device.status == 'allow' else 0}:" for device in devices)
+        rule_settings = f"{len(devices)}:" + "".join(
+            f"{device.mac}:{1 if device.status == 'allow' else 0}:" for device in devices
+        )
         return {
             action_name: action_name,
             "enable_acl": "enable_acl",
@@ -395,7 +443,7 @@ class NetgearClient:
             path = request_spec.get("path")
             if not path:
                 raise ProtocolError("request spec missing path")
-            url = urllib.parse.urljoin(f"{self.config.host.rstrip('/')}/", str(path).lstrip("/"))
+            url = urllib.parse.urljoin(f"{self.config.host.rstrip('/')}/", path.lstrip("/"))
         method = request_spec.get("method", "GET")
         headers = _render_value(request_spec.get("headers", {}), merged_context)
         payload = context if pre_rendered else _render_value(request_spec.get("payload"), merged_context)
@@ -429,6 +477,7 @@ def _parse_access_control_html(response: SimpleResponse) -> AccessControlPage:
     if not action_match:
         raise ProtocolError("access control form action not found")
     action_url = urllib.parse.urljoin(response.url, action_match.group(1))
+
     row_pattern = re.compile(
         r'<tr name="row_rules">.*?<span name="rule_status" class="acl_(allowed|blocked)">.*?</span>.*?'
         r'<span name="rule_ip">([^<]*)</span>.*?'
@@ -436,18 +485,31 @@ def _parse_access_control_html(response: SimpleResponse) -> AccessControlPage:
         re.DOTALL,
     )
     connected_devices = tuple(
-        AccessControlDevice(mac=normalize_mac(mac), status=status_org.strip().lower(), ip=ip.strip())
+        AccessControlDevice(
+            mac=normalize_mac(mac),
+            status=status_org.strip().lower(),
+            ip=ip.strip(),
+        )
         for _, ip, mac, status_org in row_pattern.findall(html)
     )
     if not connected_devices:
         raise ProtocolError("access control page did not contain connected devices")
-    black_list_macs = tuple(normalize_mac(mac) for mac in re.findall(r'<span name="rule_mac_black" class="">([^<]+)</span>', html))
+
+    black_list_macs = tuple(
+        normalize_mac(mac)
+        for mac in re.findall(r'<span name="rule_mac_black" class="">([^<]+)</span>', html)
+    )
     hidden_fields = {
         name: value
         for name, value in re.findall(r'<input name="([^"]+)" type="hidden" value= "([^"]*)">', html)
         if name
     }
-    return AccessControlPage(action_url=action_url, connected_devices=connected_devices, black_list_macs=black_list_macs, hidden_fields=hidden_fields)
+    return AccessControlPage(
+        action_url=action_url,
+        connected_devices=connected_devices,
+        black_list_macs=black_list_macs,
+        hidden_fields=hidden_fields,
+    )
 
 
 def _blocked_macs(page: AccessControlPage) -> set[str]:

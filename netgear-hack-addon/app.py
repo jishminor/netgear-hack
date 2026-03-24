@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from netgear_client import AuthenticationError, ConfigError, NetgearClient, ProtocolError, RequestError, RouterConfig, load_profile
+from netgear_hack.router import AuthenticationError, ConfigError, NetgearClient, ProtocolError, RequestError, RouterConfig, load_profile
 
 
 OPTIONS_PATH = Path("/data/options.json")

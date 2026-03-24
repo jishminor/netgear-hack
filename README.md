@@ -14,7 +14,8 @@ The implementation uses only the Python standard library, and `uv` manages the i
 ## Files
 
 - `netgear_block.py`: CLI entrypoint
-- `netgear_client.py`: router client and request-profile handling
+- `netgear_hack/router.py`: router client and request-profile handling
+- `netgear_client.py`: compatibility wrapper for older imports
 - `router_profile.example.json`: example profile shape to adapt to your firmware
 - `tests/`: unit tests
 
@@ -162,6 +163,8 @@ A practical deployment is to keep the script and `router_profile.json` in a loca
 ## Home Assistant add-on
 
 This repo also includes a custom Home Assistant add-on in [netgear-hack-addon](/Users/joshminor/code/netgear-hack/netgear-hack-addon).
+
+The shared router logic lives in [netgear_hack/router.py](/Users/joshminor/code/netgear-hack/netgear_hack/router.py). The addon vendors that package shape for Home Assistant build-context compatibility; refresh it with [sync_addon_package.sh](/Users/joshminor/code/netgear-hack/scripts/sync_addon_package.sh) after changing the shared router code.
 
 To use it:
 

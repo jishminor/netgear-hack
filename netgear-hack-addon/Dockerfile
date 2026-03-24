@@ -3,7 +3,7 @@ FROM ${BUILD_FROM}
 
 WORKDIR /opt/netgear-hack
 
-COPY netgear_client.py netgear_client.py
+COPY netgear_hack netgear_hack
 COPY router_profile.example.json router_profile.example.json
 COPY app.py app.py
 COPY run.sh /run.sh
