@@ -192,10 +192,12 @@ class UrlLibSession:
         *,
         headers: Mapping[str, str] | None = None,
         data: bytes | None = None,
+        auth_override: tuple[str, str] | bool | None = None,
     ) -> SimpleResponse:
         request_headers = dict(headers or {})
-        if self._basic_auth and "Authorization" not in request_headers:
-            username, password = self._basic_auth
+        auth = self._basic_auth if auth_override is None else None if auth_override is False else auth_override
+        if auth and "Authorization" not in request_headers:
+            username, password = auth
             token = b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
             request_headers["Authorization"] = f"Basic {token}"
         request = urllib.request.Request(url=url, data=data, headers=request_headers, method=method.upper())
@@ -243,14 +245,25 @@ class NetgearClient:
         self._logged_in = False
 
     def login(self) -> None:
-        response = self._send_profile_request(self.profile["login"], {})
-        failure_rule = self.profile["login"].get("auth_failure")
+        login_spec = self.profile["login"]
+        if login_spec.get("auth") == "basic" and login_spec.get("bootstrap_first"):
+            self._bootstrap_basic_auth(login_spec)
+        response = self._send_profile_request(login_spec, {})
+        failure_rule = login_spec.get("auth_failure")
         if failure_rule and _match_rule(response, failure_rule):
             raise AuthenticationError("router rejected credentials")
-        success_rule = self.profile["login"].get("success")
+        success_rule = login_spec.get("success")
         if success_rule and not _match_rule(response, success_rule):
             raise ProtocolError("login response did not match profile expectations")
         self._logged_in = True
+
+    def _bootstrap_basic_auth(self, login_spec: Mapping[str, Any]) -> None:
+        path = login_spec.get("bootstrap_path") or login_spec.get("path")
+        if not path:
+            raise ProtocolError("login bootstrap path missing from profile")
+        url = urllib.parse.urljoin(f"{self.config.host.rstrip('/')}/", str(path).lstrip("/"))
+        headers = _render_value(login_spec.get("bootstrap_headers", login_spec.get("headers", {})), {"host": self.config.host.rstrip("/")})
+        self.session.request(str(login_spec.get("method", "GET")), url, headers=headers, auth_override=False)
 
     def get_blocked_macs(self) -> set[str]:
         if "blocked_list" not in self.profile:

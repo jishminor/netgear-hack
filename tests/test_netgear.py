@@ -22,8 +22,16 @@ class FakeSession:
         self.responses = list(responses)
         self.calls = []
 
-    def request(self, method, url, *, headers=None, data=None):
-        self.calls.append({"method": method, "url": url, "headers": headers or {}, "data": data})
+    def request(self, method, url, *, headers=None, data=None, auth_override=None):
+        self.calls.append(
+            {
+                "method": method,
+                "url": url,
+                "headers": headers or {},
+                "data": data,
+                "auth_override": auth_override,
+            }
+        )
         if not self.responses:
             raise AssertionError("unexpected extra request")
         return self.responses.pop(0)
@@ -197,6 +205,32 @@ class ClientFlowTests(unittest.TestCase):
 
         self.assertEqual(len(session.calls), 1)
 
+    def test_basic_auth_bootstrap_first(self):
+        profile = {
+            **self.profile,
+            "login": {
+                "auth": "basic",
+                "bootstrap_first": True,
+                "method": "GET",
+                "path": "/start.htm",
+                "success": {"status_codes": [200], "body_regex": "NETGEAR Router"},
+                "auth_failure": {"status_codes": [401]},
+            },
+        }
+        session = FakeSession(
+            [
+                make_response(status=401, text="unauthorized", url="http://192.168.1.1/start.htm"),
+                make_response(status=200, text="NETGEAR Router", url="http://192.168.1.1/start.htm"),
+            ]
+        )
+        client = NetgearClient(self.config, profile, session=session)
+
+        client.login()
+
+        self.assertEqual(len(session.calls), 2)
+        self.assertIs(session.calls[0]["auth_override"], False)
+        self.assertIsNone(session.calls[1]["auth_override"])
+
     def test_unblock_returns_already_when_missing(self):
         session = FakeSession(
             [
@@ -225,6 +259,7 @@ class HtmlAclTests(unittest.TestCase):
             "confirm_after_block": True,
             "login": {
                 "auth": "basic",
+                "bootstrap_first": True,
                 "method": "GET",
                 "path": "/start.htm",
                 "success": {"status_codes": [200], "body_regex": "NETGEAR Router"},
@@ -302,34 +337,58 @@ class HtmlAclTests(unittest.TestCase):
         self.assertEqual(page.blocked_macs, set())
 
     def test_block_connected_device_posts_acl_form(self):
-        session = FakeSession([make_response(text="NETGEAR Router"), self.page_allow, self.page_blocked, self.page_blocked])
+        session = FakeSession(
+            [
+                make_response(status=401, text="unauthorized", url="http://192.168.1.1/start.htm"),
+                make_response(text="NETGEAR Router", url="http://192.168.1.1/start.htm"),
+                self.page_allow,
+                self.page_blocked,
+                self.page_blocked,
+            ]
+        )
         client = NetgearClient(self.config, self.profile, session=session)
 
         result = client.block_mac("0C:91:60:03:4F:84")
 
         self.assertEqual(result, BlockResult(status="blocked", mac="0C:91:60:03:4F:84"))
-        post_body = session.calls[2]["data"].decode("utf-8")
+        post_body = session.calls[3]["data"].decode("utf-8")
         self.assertIn("block=block", post_body)
         self.assertIn("rule_settings=2%3A0C%3A91%3A60%3A03%3A4F%3A84%3A0%3AAA%3ABB%3ACC%3ADD%3AEE%3AFF%3A1%3A", post_body)
 
     def test_unblock_connected_device_posts_allow(self):
-        session = FakeSession([make_response(text="NETGEAR Router"), self.page_blocked, self.page_allow, self.page_allow])
+        session = FakeSession(
+            [
+                make_response(status=401, text="unauthorized", url="http://192.168.1.1/start.htm"),
+                make_response(text="NETGEAR Router", url="http://192.168.1.1/start.htm"),
+                self.page_blocked,
+                self.page_allow,
+                self.page_allow,
+            ]
+        )
         client = NetgearClient(self.config, self.profile, session=session)
 
         result = client.unblock_mac("0C:91:60:03:4F:84")
 
         self.assertEqual(result, BlockResult(status="unblocked", mac="0C:91:60:03:4F:84"))
-        post_body = session.calls[2]["data"].decode("utf-8")
+        post_body = session.calls[3]["data"].decode("utf-8")
         self.assertIn("allow=allow", post_body)
 
     def test_unblock_blacklist_only_uses_delete_black(self):
-        session = FakeSession([make_response(text="NETGEAR Router"), self.page_blacklist_only, self.page_allow, self.page_allow])
+        session = FakeSession(
+            [
+                make_response(status=401, text="unauthorized", url="http://192.168.1.1/start.htm"),
+                make_response(text="NETGEAR Router", url="http://192.168.1.1/start.htm"),
+                self.page_blacklist_only,
+                self.page_allow,
+                self.page_allow,
+            ]
+        )
         client = NetgearClient(self.config, self.profile, session=session)
 
         result = client.unblock_mac("0C:91:60:03:4F:84")
 
         self.assertEqual(result, BlockResult(status="unblocked", mac="0C:91:60:03:4F:84"))
-        post_body = session.calls[2]["data"].decode("utf-8")
+        post_body = session.calls[3]["data"].decode("utf-8")
         self.assertIn("delete_black=Delete", post_body)
         self.assertIn("delete_black_lists=1%3A0C%3A91%3A60%3A03%3A4F%3A84%3A", post_body)
 

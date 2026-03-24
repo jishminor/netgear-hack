@@ -5,6 +5,7 @@
   "confirm_after_block": true,
   "login": {
     "auth": "basic",
+    "bootstrap_first": true,
     "method": "GET",
     "path": "/start.htm",
     "success": {
