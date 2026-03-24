@@ -1,0 +1,19 @@
+configuration:
+  host:
+    name: Router Host
+    description: Base URL for the Netgear router, for example http://192.168.1.1
+  username:
+    name: Router Username
+    description: Administrator username for the router
+  password:
+    name: Router Password
+    description: Administrator password for the router
+  timeout:
+    name: Timeout
+    description: Router request timeout in seconds
+  verify_tls:
+    name: Verify TLS
+    description: Validate TLS certificates for HTTPS router hosts
+  api_token:
+    name: API Token
+    description: Optional bearer token required by the addon HTTP API

@@ -2,6 +2,14 @@
 
 This add-on exposes a small HTTP API that blocks and unblocks MAC addresses on a Netgear RAX43v2 router.
 
+## Installation
+
+1. Add this GitHub repository as a custom add-on repository in Home Assistant.
+2. Install the `Netgear Hack` add-on.
+3. Configure the router credentials and host.
+4. Start the add-on.
+5. Check the add-on logs and verify `GET /health` returns `{"status":"ok"}`.
+
 ## Configuration
 
 ```yaml
@@ -74,3 +82,8 @@ rest_command:
 ```
 
 Then call those `rest_command` services from scripts or automations.
+
+## Notes
+
+- The add-on uses `host_network: true` so it can reach the router directly on the LAN.
+- `api_token` is optional but recommended if anything outside Home Assistant might be able to reach port `8099`.
