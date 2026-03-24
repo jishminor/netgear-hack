@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "netgear-hack"
+version = "0.1.0"
+description = "CLI for blocking MAC addresses on a Netgear router access-control list"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+netgear-block = "netgear_block:main"
+
+[tool.uv]
+package = true
+
+[tool.hatch.build.targets.wheel]
+include = [
+  "netgear_block.py",
+  "netgear_client.py",
+]

@@ -1,0 +1,49 @@
+{
+  "host": "http://192.168.1.1",
+  "username": "admin",
+  "password": "replace-me",
+  "confirm_after_block": true,
+  "login": {
+    "auth": "basic",
+    "method": "GET",
+    "path": "/start.htm",
+    "success": {
+      "status_codes": [200],
+      "body_regex": "NETGEAR Router"
+    },
+    "auth_failure": {
+      "status_codes": [401]
+    }
+  },
+  "blocked_list": {
+    "method": "GET",
+    "path": "/DEV_control.htm",
+    "parser": {
+      "type": "html_acl"
+    }
+  },
+  "block_action": {
+    "method": "POST",
+    "content_type": "form",
+    "headers": {
+      "Referer": "{{host}}/DEV_control.htm",
+      "Origin": "{{host}}"
+    },
+    "success": {
+      "status_codes": [200],
+      "body_regex": "rule_settings"
+    }
+  },
+  "unblock_action": {
+    "method": "POST",
+    "content_type": "form",
+    "headers": {
+      "Referer": "{{host}}/DEV_control.htm",
+      "Origin": "{{host}}"
+    },
+    "success": {
+      "status_codes": [200],
+      "body_regex": "rule_settings|delete_black_lists"
+    }
+  }
+}
